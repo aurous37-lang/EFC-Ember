@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 /// @title IEmberRecovery — OPTIONAL abandoned-capital recovery extension
 /// @notice NOT part of the neutral ERC-EMBER standard (`IEmber`). This is an

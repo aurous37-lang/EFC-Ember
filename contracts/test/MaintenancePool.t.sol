@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Test.sol";
 import "../src/MaintenancePool.sol";
 import "./mocks/MockUSDC.sol";
+import "./mocks/ReentrantToken.sol";
 
 /// @notice Unit suite for MaintenancePool's timelocked proposal governance.
 contract MaintenancePoolTest is Test {
@@ -179,6 +180,24 @@ contract MaintenancePoolTest is Test {
         pool.tip(0, "x");
         vm.expectRevert(bytes("zero amount"));
         pool.payForkRoyalty(0);
+    }
+
+    function test_ReentrantFundingTokenCannotReenterTip() public {
+        ReentrantToken token = new ReentrantToken();
+        MaintenancePool guarded =
+            new MaintenancePool(emberToken, governor, address(token), MaintenancePool.GovernanceMode.Steward, DELAY);
+
+        token.mint(stranger, 200);
+        token.setReentry(address(guarded), abi.encodeWithSelector(MaintenancePool.tip.selector, 1, "nested"));
+
+        vm.startPrank(stranger);
+        token.approve(address(guarded), 200);
+        guarded.tip(200, "outer");
+        vm.stopPrank();
+
+        assertTrue(token.attemptedReentry(), "reentry attempted");
+        assertFalse(token.reentrySucceeded(), "guard blocked reentry");
+        assertEq(token.balanceOf(address(guarded)), 200, "outer tip still succeeds");
     }
 
     // ---------- sunset ----------

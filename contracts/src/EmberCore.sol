@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 import "./IEmber.sol";
 import "./IEmberRecovery.sol";
@@ -20,6 +20,9 @@ import "./IERC20Token.sol";
 ///         that implement IEmber getters, and an explicit `manifest()` getter
 ///         (struct auto-getters omit `string` members).
 contract EmberCore is IEmber, IEmberRecovery {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
     // === Identity ===
     string public name;
     string public symbol;
@@ -86,6 +89,7 @@ contract EmberCore is IEmber, IEmberRecovery {
     // === Abandoned capital recovery (disabled when both are zero) ===
     address public immutable override recoveryTreasury;
     address public immutable override recoveryCommissionRecipient;
+    uint256 private _reentrancyStatus;
 
     // === Events (not in IEmber) ===
     event Transfer(address indexed from, address indexed to, uint256 value);
@@ -102,6 +106,13 @@ contract EmberCore is IEmber, IEmberRecovery {
     modifier notAbandoned() {
         require(!abandonedRecovered, "abandoned");
         _;
+    }
+
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "reentrant");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
     }
 
     constructor(
@@ -156,6 +167,7 @@ contract EmberCore is IEmber, IEmberRecovery {
         recoveryTreasury = _recoveryTreasury;
         recoveryCommissionRecipient = _recoveryCommissionRecipient;
         lastProjectActivity = block.timestamp;
+        _reentrancyStatus = _NOT_ENTERED;
     }
 
     // ---------- Manifest getter (explicit; struct auto-getter drops strings) ----------
@@ -170,10 +182,9 @@ contract EmberCore is IEmber, IEmberRecovery {
         return basePrice * amount + (slope * (b * b - a * a)) / 2;
     }
 
-    function buy(uint256 amount) external override notAbandoned {
+    function buy(uint256 amount) external override notAbandoned nonReentrant {
         require(amount > 0 && _balances[address(this)] >= amount, "sold out");
         uint256 cost = quote(amount);
-        require(USDC.transferFrom(msg.sender, address(this), cost), "USDC pull failed");
 
         uint256 fee = feeBps > 0 ? (cost * feeBps) / 10_000 : 0;
         uint256 toProject = cost - fee;
@@ -182,8 +193,10 @@ contract EmberCore is IEmber, IEmberRecovery {
         totalRaised += toProject;
         totalFeesPaid += fee;
 
+        _safeUsdcTransferFrom(msg.sender, address(this), cost);
+
         if (fee > 0) {
-            require(USDC.transfer(feeRecipient, fee), "fee xfer failed");
+            _safeUsdcTransfer(feeRecipient, fee);
             emit FeePaid(fee);
         }
 
@@ -277,7 +290,7 @@ contract EmberCore is IEmber, IEmberRecovery {
         return (redemptionPoolTotal * amount) / redemptionSupplyTotal;
     }
 
-    function redeem(uint256 amount) external override {
+    function redeem(uint256 amount) external override nonReentrant {
         require(releaseDeadline != 0, "ember phase not started");
         require(redemptionSupplyTotal > 0, "no redemption pool");
         require(amount > 0 && _balances[msg.sender] >= amount, "bad amount");
@@ -289,7 +302,7 @@ contract EmberCore is IEmber, IEmberRecovery {
         _touchProjectActivity();
         emit Transfer(msg.sender, address(0), amount);
         emit Redeemed(msg.sender, amount, payout);
-        require(USDC.transfer(msg.sender, payout), "redeem xfer failed");
+        _safeUsdcTransfer(msg.sender, payout);
     }
 
     function redemptionReserveRemaining() public view returns (uint256) {
@@ -308,17 +321,17 @@ contract EmberCore is IEmber, IEmberRecovery {
         return vested > devClaimed ? vested - devClaimed : 0;
     }
 
-    function withdrawDev() external override onlyDeveloper notAbandoned {
+    function withdrawDev() external override onlyDeveloper notAbandoned nonReentrant {
         uint256 amt = devClaimable();
         require(amt > 0, "nothing");
         devClaimed += amt;
         _touchProjectActivity();
-        require(USDC.transfer(developer, amt), "dev xfer failed");
+        _safeUsdcTransfer(developer, amt);
         emit DevWithdrew(amt);
     }
 
     // ---------- Slash (reserved tranche only) ----------
-    function slashReserve() external override notAbandoned {
+    function slashReserve() external override notAbandoned nonReentrant {
         require(!released && !slashed, "terminal");
         require(releaseDeadline != 0, "not slashable");
         // 30-day ember window; validator timestamp drift cannot meaningfully shift it.
@@ -327,14 +340,14 @@ contract EmberCore is IEmber, IEmberRecovery {
         slashed = true;
         _touchProjectActivity();
         if (reservedAtTrigger > 0) {
-            require(USDC.transfer(address(0xdEaD), reservedAtTrigger), "slash xfer failed");
+            _safeUsdcTransfer(address(0xdEaD), reservedAtTrigger);
             emit ReserveSlashed(reservedAtTrigger);
         }
         emit ContractTerminated(totalBurned, block.timestamp);
     }
 
     // ---------- Abandoned capital recovery ----------
-    function recoverAbandonedCapital() external override {
+    function recoverAbandonedCapital() external override nonReentrant {
         require(!abandonedRecovered, "already recovered");
         require(recoveryTreasury != address(0) && recoveryCommissionRecipient != address(0), "recovery disabled");
         // 1-year inactivity gate; seconds of validator drift are immaterial.
@@ -351,8 +364,8 @@ contract EmberCore is IEmber, IEmberRecovery {
         uint256 commissionAmount = (recoverable * 10) / 100;
         uint256 treasuryAmount = recoverable - commissionAmount;
 
-        require(USDC.transfer(recoveryTreasury, treasuryAmount), "treasury xfer failed");
-        require(USDC.transfer(recoveryCommissionRecipient, commissionAmount), "commission xfer failed");
+        _safeUsdcTransfer(recoveryTreasury, treasuryAmount);
+        _safeUsdcTransfer(recoveryCommissionRecipient, commissionAmount);
         emit AbandonedCapitalRecovered(treasuryAmount, commissionAmount);
         if (!wasTerminated) {
             emit ContractTerminated(totalBurned, block.timestamp);
@@ -418,6 +431,17 @@ contract EmberCore is IEmber, IEmberRecovery {
             _balances[t] += v;
         }
         emit Transfer(f, t, v);
+    }
+
+    function _safeUsdcTransfer(address to, uint256 value) internal {
+        (bool success, bytes memory data) = address(USDC).call(abi.encodeCall(IERC20Token.transfer, (to, value)));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC transfer failed");
+    }
+
+    function _safeUsdcTransferFrom(address from, address to, uint256 value) internal {
+        (bool success, bytes memory data) =
+            address(USDC).call(abi.encodeCall(IERC20Token.transferFrom, (from, to, value)));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC pull failed");
     }
 
     function _touchProjectActivity() internal {

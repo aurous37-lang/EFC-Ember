@@ -7,6 +7,7 @@ import "../src/IEmber.sol";
 import "../src/IEmberRecovery.sol";
 import "../src/IERC165.sol";
 import "./mocks/MockUSDC.sol";
+import "./mocks/ReentrantToken.sol";
 
 /// @notice Invariant suite for the v0.3 redemption / freeze / slash mechanics.
 /// @dev    Flat bonding curve (slope = 0), no fee, so totalRaised = SUPPLY * BASE_PRICE = 1e10.
@@ -214,6 +215,40 @@ contract EmberCoreTest is Test {
         vm.expectRevert(bytes("zero address"));
         bool ok = ember.transfer(address(0), 1);
         assertFalse(ok);
+    }
+
+    function test_ReentrantPaymentTokenCannotReenterBuy() public {
+        ReentrantToken token = new ReentrantToken();
+        EmberCore guarded = new EmberCore(
+            "Guarded",
+            "GRD",
+            SUPPLY,
+            developer,
+            dapp,
+            keccak256(bytes(KEY0)),
+            "ipfs://encrypted",
+            _manifest(),
+            address(token),
+            BASE_PRICE,
+            0,
+            address(0),
+            0,
+            address(0),
+            address(0)
+        );
+
+        uint256 cost = guarded.quote(10);
+        token.mint(buyer, cost);
+        token.setReentry(address(guarded), abi.encodeWithSelector(EmberCore.buy.selector, 1));
+
+        vm.startPrank(buyer);
+        token.approve(address(guarded), cost);
+        guarded.buy(10);
+        vm.stopPrank();
+
+        assertTrue(token.attemptedReentry(), "reentry attempted");
+        assertFalse(token.reentrySucceeded(), "guard blocked reentry");
+        assertEq(guarded.balanceOf(buyer), 10, "outer buy still succeeds");
     }
 
     // 5. Slash burns ONLY the reserved tranche; redemption pool + dev unreserved survive.

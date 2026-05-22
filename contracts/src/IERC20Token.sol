@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 /// @notice Minimal USDC-style ERC20 surface used by EmberCore / MaintenancePool.
 interface IERC20Token {

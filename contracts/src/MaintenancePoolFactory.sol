@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 import "./MaintenancePool.sol";
 
@@ -20,6 +20,10 @@ contract MaintenancePoolFactory {
         MaintenancePool.GovernanceMode mode,
         uint256 timelockDelay
     ) external returns (address pool) {
+        require(emberToken != address(0), "no ember");
+        require(governor != address(0), "no governor");
+        require(usdc != address(0), "no USDC");
+        require(timelockDelay >= 1 days && timelockDelay <= 30 days, "bad delay");
         pool = address(new MaintenancePool(emberToken, governor, usdc, mode, timelockDelay));
         emit PoolCreated(pool, emberToken, governor);
     }

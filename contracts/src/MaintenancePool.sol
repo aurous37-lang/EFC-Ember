@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.24;
+pragma solidity 0.8.24;
 
 import "./IERC20Token.sol";
 
@@ -18,6 +18,9 @@ import "./IERC20Token.sol";
 ///         external tally contract that decides what to queue; that tally contract
 ///         is out of scope for this implementation.
 contract MaintenancePool {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
     enum GovernanceMode {
         Steward,
         Multisig,
@@ -53,6 +56,7 @@ contract MaintenancePool {
     bool public closed;
     uint256 public lastDrawTimestamp;
     uint256 public proposalCount;
+    uint256 private _reentrancyStatus;
     mapping(uint256 => Proposal) public proposals;
 
     // === Constants ===
@@ -82,6 +86,13 @@ contract MaintenancePool {
         _;
     }
 
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "reentrant");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
     constructor(address _emberToken, address _governor, address _usdc, GovernanceMode _mode, uint256 _timelockDelay) {
         require(_emberToken != address(0) && _usdc != address(0), "bad params");
         require(_governor != address(0), "no governor");
@@ -92,18 +103,19 @@ contract MaintenancePool {
         governor = _governor;
         timelockDelay = _timelockDelay;
         lastDrawTimestamp = block.timestamp;
+        _reentrancyStatus = _NOT_ENTERED;
     }
 
     // ---------- Funding (instant, permissionless) ----------
-    function tip(uint256 amount, string calldata memo) external notClosed {
+    function tip(uint256 amount, string calldata memo) external notClosed nonReentrant {
         require(amount > 0, "zero amount");
-        require(USDC.transferFrom(msg.sender, address(this), amount), "tip failed");
+        _safeUsdcTransferFrom(msg.sender, address(this), amount);
         emit Tipped(msg.sender, amount, memo);
     }
 
-    function payForkRoyalty(uint256 amount) external notClosed {
+    function payForkRoyalty(uint256 amount) external notClosed nonReentrant {
         require(amount > 0, "zero amount");
-        require(USDC.transferFrom(msg.sender, address(this), amount), "royalty failed");
+        _safeUsdcTransferFrom(msg.sender, address(this), amount);
         emit ForkRoyalty(msg.sender, amount);
     }
 
@@ -148,7 +160,7 @@ contract MaintenancePool {
     }
 
     // ---------- Execute (permissionless, after eta) ----------
-    function execute(uint256 id) external notClosed {
+    function execute(uint256 id) external notClosed nonReentrant {
         require(id > 0 && id <= proposalCount, "unknown proposal");
         Proposal storage p = proposals[id];
         require(!p.executed, "executed");
@@ -163,7 +175,7 @@ contract MaintenancePool {
             require(USDC.balanceOf(address(this)) >= p.amount, "insufficient");
             lastDrawTimestamp = block.timestamp;
             emit Claimed(p.target, p.amount, p.reason);
-            require(USDC.transfer(p.target, p.amount), "claim failed");
+            _safeUsdcTransfer(p.target, p.amount);
         } else if (p.ptype == ProposalType.GovernorChange) {
             emit GovernorChanged(governor, p.target);
             governor = p.target;
@@ -176,7 +188,7 @@ contract MaintenancePool {
             emit Sunset(p.target, bal, p.reason);
             emit PoolClosed();
             if (bal > 0) {
-                require(USDC.transfer(p.target, bal), "sunset failed");
+                _safeUsdcTransfer(p.target, bal);
             }
         }
 
@@ -196,5 +208,16 @@ contract MaintenancePool {
         // 1-year inactivity gate; seconds of validator drift are immaterial.
         // forge-lint: disable-next-line(block-timestamp)
         return block.timestamp > lastDrawTimestamp + SUNSET_INACTIVITY;
+    }
+
+    function _safeUsdcTransfer(address to, uint256 value) internal {
+        (bool success, bytes memory data) = address(USDC).call(abi.encodeCall(IERC20Token.transfer, (to, value)));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC transfer failed");
+    }
+
+    function _safeUsdcTransferFrom(address from, address to, uint256 value) internal {
+        (bool success, bytes memory data) =
+            address(USDC).call(abi.encodeCall(IERC20Token.transferFrom, (from, to, value)));
+        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC pull failed");
     }
 }
