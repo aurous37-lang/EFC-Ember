@@ -64,7 +64,7 @@ contract EmberCoreExtendedFuzzTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(ember), cost);
-        ember.buy(amount);
+        ember.buy(amount, cost);
         vm.stopPrank();
     }
 
@@ -155,6 +155,8 @@ contract EmberCoreExtendedFuzzTest is Test {
         uint256 aliceCost = _buy(ember, alice, burnAmount);
         uint256 bobCost = _buy(ember, bob, remainder);
 
+        vm.prank(alice);
+        ember.approve(dapp, burnAmount);
         vm.prank(dapp);
         ember.useApp(alice, burnAmount);
         vm.warp(block.timestamp + ember.RELEASE_TIMEOUT() + 1);

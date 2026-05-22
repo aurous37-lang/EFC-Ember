@@ -135,7 +135,8 @@ Current local verification:
 
 The repo includes Foundry deployment scripts under `contracts/script/`:
 
-- `DeployFactory.s.sol`: deploys `MaintenancePoolFactory`, then `EmberFactory`.
+- `DeployFactory.s.sol`: deploys `MaintenancePoolFactory`, deploys `EmberFactory`,
+  then authorizes that factory as the only pool-factory caller.
 - `CheckFactoryDeployment.s.sol`: verifies deployed factory wiring and owner.
 - `SeedLicenseApproval.s.sol`: sets one SPDX identifier in the factory allowlist.
 - `CheckLicenseApproval.s.sol`: verifies one SPDX identifier's allowlist state.
@@ -174,6 +175,8 @@ prevention against a compromised governor.
 
 Production factory deployments must pass real, non-zero `standardAuthor`,
 `recoveryTreasury`, and `maintenancePoolFactory` addresses to the `EmberFactory`
-constructor (deploy `MaintenancePoolFactory` first). `EmberFactory.deploy` enforces
-that the sale token is 6-decimal USDC; `EmberCore` itself stays neutral about
-stablecoin decimals.
+constructor (deploy `MaintenancePoolFactory` first, then call
+`setEmberFactory`). `EmberFactory.deploy` enforces that the sale token is a
+6-decimal contract token; `EmberCore` itself stays neutral about stablecoin
+decimals. `EmberCore.buy` requires a caller-supplied `maxCost`, and dApp burns
+require the user to approve the dApp before `useApp` can consume tokens.

@@ -25,6 +25,7 @@ contract DeployFactory is Script {
 
         poolFactory = new MaintenancePoolFactory();
         emberFactory = new EmberFactory(standardAuthor, recoveryTreasury, address(poolFactory));
+        poolFactory.setEmberFactory(address(emberFactory));
 
         vm.stopBroadcast();
     }

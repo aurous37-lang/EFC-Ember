@@ -30,7 +30,9 @@ contract EmberFactoryPoolTest is Test {
     function setUp() public {
         poolFactory = new MaintenancePoolFactory();
         factory = new EmberFactory(standardAuthor, recoveryTreasury, address(poolFactory)); // test contract is owner
+        poolFactory.setEmberFactory(address(factory));
         usdc = new MockUSDC();
+        emberToken = address(this);
     }
 
     function _manifest(string memory lic) internal pure returns (IEmber.SourceManifest memory m) {
@@ -77,6 +79,15 @@ contract EmberFactoryPoolTest is Test {
 
         vm.expectRevert(bytes("no pool factory"));
         new EmberFactory(standardAuthor, recoveryTreasury, address(0));
+
+        vm.expectRevert(bytes("pool factory not contract"));
+        new EmberFactory(standardAuthor, recoveryTreasury, makeAddr("notPoolFactory"));
+    }
+
+    function test_PoolFactoryOnlyConfiguredFactoryCanCreate() public {
+        MaintenancePoolFactory restricted = new MaintenancePoolFactory();
+        vm.expectRevert(bytes("not factory"));
+        restricted.create(address(this), governor, address(usdc), MaintenancePool.GovernanceMode.Steward, POOL_DELAY);
     }
 
     // factory owner can approve a license
@@ -265,7 +276,7 @@ contract EmberFactoryPoolTest is Test {
         assertEq(mp.timelockDelay(), POOL_DELAY, "timelock delay wired");
 
         (,, address poolAddr,,) = factory.info(ember);
-        assertEq(poolAddr, pool, "pool recorded in registry");
+        assertEq(poolAddr, address(0), "pool registry omitted to keep deploy CEI");
     }
 
     // pool rejects a zero governor — directly and through the factory

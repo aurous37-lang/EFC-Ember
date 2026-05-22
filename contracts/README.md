@@ -90,8 +90,10 @@ there is no ongoing standard-author payment stream.
 
 `EmberFactory` spawns maintenance pools through an external `MaintenancePoolFactory`
 (this keeps `EmberFactory` under the EIP-170 size limit), so deploy that first and
-pass its address to the `EmberFactory` constructor. The launch scripts in
-`script/` automate this sequence and the project deploy path; see
+pass its address to the `EmberFactory` constructor. The pool factory is then
+one-time authorized with `setEmberFactory`, which prevents arbitrary pool-factory
+use while keeping direct `MaintenancePool` deployment available. The launch scripts
+in `script/` automate this sequence and the project deploy path; see
 `../docs/launch-deployer.md`.
 
 Deploy only after `forge fmt --check`, `forge build --force`, `forge test -vvv`,
@@ -109,6 +111,9 @@ before accepting product deployments. The checked-in
 `script/SeedLicenseApproval.s.sol` script seeds one SPDX identifier per run.
 `deploy(...)` enforces that the `usdc` sale token reports `decimals() == 6` (the
 bonding curve assumes 6 decimals); `EmberCore` itself is neutral about decimals.
+Project callers must use the slippage-protected `buy(amount, maxCost)` surface.
+The configured dApp can burn user tokens through `useApp` only after the user has
+approved the dApp for the burn amount.
 When a product opts into a maintenance pool, `deploy(...)` takes a
 `poolTimelockDelay` (seconds, bounded to [1 day, 30 days]; recommended 7 days for
 production, 1 day for testnet).
@@ -116,10 +121,10 @@ production, 1 day for testnet).
 ## Current verification
 
 - `forge build --force`: compiler successful, zero warnings
-- `forge test`: 47 passed, 0 failed
-- `forge build --sizes`: `EmberFactory` runtime size 20,154 bytes (4,422 below the
-  EIP-170 24,576-byte limit); `MaintenancePoolFactory` 7,376 bytes;
-  `MaintenancePool` 6,495 bytes; `EmberCore` 12,552 bytes
+- `forge test`: 66 passed, 0 failed
+- `forge build --sizes`: `EmberFactory` runtime size 21,079 bytes (3,497 below the
+  EIP-170 24,576-byte limit); `MaintenancePoolFactory` 8,377 bytes;
+  `MaintenancePool` 6,487 bytes; `EmberCore` 13,116 bytes
 - `forge coverage --ir-minimum`: 86.22% lines / 87.99% statements
 
 ## Test coverage
@@ -135,7 +140,7 @@ production, 1 day for testnet).
 - fuzzed quorum settlement solvency for non-round supplies/prices;
 - ERC-20 zero-address transfer rejection;
 - reserved-tranche-only slash;
-- late release before slash;
+- release-window enforcement after the Ember Phase deadline;
 - release rejection after slash;
 - optional abandoned-capital recovery;
 - ERC-165 detection for `IERC165`, `IEmber`, and `IEmberRecovery`.
@@ -148,8 +153,8 @@ production, 1 day for testnet).
 - non-6-decimal sale-token rejection (factory USDC policy);
 - production recipient and pool-factory constructor validation;
 - factory wiring of fee and recovery recipients;
-- optional maintenance-pool deployment via `MaintenancePoolFactory`, including the
-  wired timelock delay.
+- optional maintenance-pool deployment via authorized `MaintenancePoolFactory`,
+  including the wired timelock delay.
 
 `MaintenancePool.t.sol` covers:
 

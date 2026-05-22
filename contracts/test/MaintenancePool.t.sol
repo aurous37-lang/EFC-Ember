@@ -21,6 +21,7 @@ contract MaintenancePoolTest is Test {
     uint256 constant FUND = 1_000_000; // 1 USDC at 6 decimals
 
     function setUp() public {
+        emberToken = address(this);
         usdc = new MockUSDC();
         pool = new MaintenancePool(emberToken, governor, address(usdc), MaintenancePool.GovernanceMode.Steward, DELAY);
         usdc.mint(address(pool), FUND);
@@ -49,6 +50,11 @@ contract MaintenancePoolTest is Test {
     function test_ConstructorRejectsNonContractUsdc() public {
         vm.expectRevert(bytes("USDC not contract"));
         new MaintenancePool(emberToken, governor, address(0xBEEF), MaintenancePool.GovernanceMode.Steward, DELAY);
+    }
+
+    function test_ConstructorRejectsNonContractEmber() public {
+        vm.expectRevert(bytes("ember not contract"));
+        new MaintenancePool(address(0xBEEF), governor, address(usdc), MaintenancePool.GovernanceMode.Steward, DELAY);
     }
 
     function test_ConstructorRejectsZeroParams() public {

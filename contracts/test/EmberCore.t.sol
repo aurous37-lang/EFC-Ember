@@ -61,11 +61,13 @@ contract EmberCoreTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(ember), cost);
-        ember.buy(SUPPLY);
+        ember.buy(SUPPLY, cost);
         vm.stopPrank();
     }
 
     function _burn(address user, uint256 amount) internal {
+        vm.prank(user);
+        ember.approve(dapp, amount);
         vm.prank(dapp);
         ember.useApp(user, amount);
     }
@@ -218,7 +220,7 @@ contract EmberCoreTest is Test {
         usdc.mint(attacker, attackCost);
         vm.startPrank(attacker);
         usdc.approve(address(sloped), attackCost);
-        sloped.buy(1_000);
+        sloped.buy(1_000, attackCost);
         vm.stopPrank();
 
         // victim's cost for the same size is now higher than their accepted max
@@ -327,11 +329,11 @@ contract EmberCoreTest is Test {
 
         uint256 cost = guarded.quote(10);
         token.mint(buyer, cost);
-        token.setReentry(address(guarded), abi.encodeWithSignature("buy(uint256)", 1));
+        token.setReentry(address(guarded), abi.encodeWithSignature("buy(uint256,uint256)", 1, guarded.quote(1)));
 
         vm.startPrank(buyer);
         token.approve(address(guarded), cost);
-        guarded.buy(10);
+        guarded.buy(10, cost);
         vm.stopPrank();
 
         assertTrue(token.attemptedReentry(), "reentry attempted");
@@ -365,12 +367,13 @@ contract EmberCoreTest is Test {
         assertEq(usdc.balanceOf(developer), devClaim);
     }
 
-    // 6a. Late release works as long as nobody has slashed yet (grace until slashed).
-    function test_LateRelease_BeforeSlash() public {
+    // 6a. Release is bounded by the Ember Phase deadline.
+    function test_LateRelease_AfterWindowRejected() public {
         _toQuorum();
         vm.warp(block.timestamp + ember.EMBER_WINDOW() + 5); // PAST the deadline
-        ember.release(_keys()); // still accepted
-        assertTrue(ember.released());
+        vm.expectRevert(bytes("release window closed"));
+        ember.release(_keys());
+        assertFalse(ember.released());
         assertFalse(ember.slashed());
     }
 
@@ -411,10 +414,11 @@ contract EmberCoreTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(recoverable), cost);
-        recoverable.buy(SUPPLY);
+        recoverable.buy(SUPPLY, cost);
         vm.stopPrank();
 
         vm.warp(block.timestamp + recoverable.ABANDONMENT_TIMEOUT() + 1);
+        vm.prank(treasury);
         recoverable.recoverAbandonedCapital();
 
         assertTrue(recoverable.abandonedRecovered());
@@ -427,6 +431,32 @@ contract EmberCoreTest is Test {
         recoverable.useApp(buyer, 1);
     }
 
+    function test_AbandonedRecovery_OnlyRecipientCanRecover() public {
+        EmberCore recoverable = _recoverableEmber(SUPPLY, BASE_PRICE);
+
+        uint256 cost = recoverable.quote(SUPPLY);
+        usdc.mint(buyer, cost);
+        vm.startPrank(buyer);
+        usdc.approve(address(recoverable), cost);
+        recoverable.buy(SUPPLY, cost);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + recoverable.ABANDONMENT_TIMEOUT() + 1);
+        vm.expectRevert(bytes("not recovery recipient"));
+        recoverable.recoverAbandonedCapital();
+
+        vm.prank(commission);
+        recoverable.recoverAbandonedCapital();
+        assertTrue(recoverable.abandonedRecovered());
+    }
+
+    function test_UseAppRequiresUserAllowance() public {
+        _buyAll();
+        vm.prank(dapp);
+        vm.expectRevert(bytes("burn allowance"));
+        ember.useApp(buyer, 1);
+    }
+
     function test_AbandonedRecovery_PreservesRedemptionReserve() public {
         EmberCore recoverable = _recoverableEmber(SUPPLY, BASE_PRICE);
 
@@ -434,7 +464,8 @@ contract EmberCoreTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(recoverable), cost);
-        recoverable.buy(SUPPLY);
+        recoverable.buy(SUPPLY, cost);
+        recoverable.approve(dapp, 800_000);
         vm.stopPrank();
 
         vm.prank(dapp);
@@ -446,6 +477,7 @@ contract EmberCoreTest is Test {
         assertEq(redemptionReserve, recoverable.redemptionPoolTotal());
 
         vm.warp(block.timestamp + recoverable.ABANDONMENT_TIMEOUT() + 1);
+        vm.prank(treasury);
         recoverable.recoverAbandonedCapital();
 
         uint256 recoverableCapital = RAISED - redemptionReserve;
@@ -469,7 +501,8 @@ contract EmberCoreTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(fuzzEmber), cost);
-        fuzzEmber.buy(supply);
+        fuzzEmber.buy(supply, cost);
+        fuzzEmber.approve(dapp, burnAmount);
         vm.stopPrank();
 
         vm.prank(dapp);

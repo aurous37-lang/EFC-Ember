@@ -186,20 +186,15 @@ contract EmberCore is IEmber, IEmberRecovery {
         return basePrice * amount + (slope * (b * b - a * a)) / 2;
     }
 
-    function buy(uint256 amount) external override notAbandoned nonReentrant {
-        _buy(amount, type(uint256).max);
-    }
-
-    /// @notice Slippage-protected buy: reverts if the curve cost exceeds `maxCost`.
-    /// @dev    Non-normative convenience overload. `buy(uint256)` is the IEmber
-    ///         surface; this guards callers against sandwiching on a sloped curve.
-    function buy(uint256 amount, uint256 maxCost) external notAbandoned nonReentrant {
+    /// @notice Buy access tokens, reverting if the curve cost exceeds `maxCost`.
+    function buy(uint256 amount, uint256 maxCost) external override notAbandoned nonReentrant {
         _buy(amount, maxCost);
     }
 
     function _buy(uint256 amount, uint256 maxCost) internal {
         require(amount > 0 && _balances[address(this)] >= amount, "sold out");
         uint256 cost = quote(amount);
+        require(cost > 0, "zero cost");
         require(cost <= maxCost, "slippage");
 
         uint256 fee = feeBps > 0 ? (cost * feeBps) / 10_000 : 0;
@@ -231,7 +226,14 @@ contract EmberCore is IEmber, IEmberRecovery {
     function useApp(address user, uint256 amount) external override notAbandoned returns (bool) {
         require(msg.sender == dApp, "only dApp");
         require(releaseDeadline == 0, "ember phase: burns frozen");
+        require(user != address(0), "zero address");
         require(_balances[user] >= amount && amount > 0, "bad burn");
+        uint256 appAllowance = _allowances[user][msg.sender];
+        require(appAllowance >= amount, "burn allowance");
+        if (appAllowance != type(uint256).max) {
+            _allowances[user][msg.sender] = appAllowance - amount;
+            emit Approval(user, msg.sender, appAllowance - amount);
+        }
         _balances[user] -= amount;
         _totalSupply -= amount;
         totalBurned += amount;
@@ -277,7 +279,7 @@ contract EmberCore is IEmber, IEmberRecovery {
         releaseDeadline = block.timestamp + EMBER_WINDOW;
 
         uint256 devEarned = (totalRaised * triggerBurned) / INITIAL_SUPPLY;
-        reservedAtTrigger = (devEarned * RESERVED_PCT) / 100;
+        reservedAtTrigger = (totalRaised * triggerBurned * RESERVED_PCT) / (INITIAL_SUPPLY * 100);
         redemptionPoolTotal = totalRaised - devEarned;
         redemptionSupplyTotal = _totalSupply; // remaining unburned, user-held tokens
         _touchProjectActivity();
@@ -289,10 +291,14 @@ contract EmberCore is IEmber, IEmberRecovery {
     function release(string[] calldata decryptionKeys) external override notAbandoned {
         require(!released && !slashed, "terminal");
         require(releaseDeadline != 0, "ember phase not started");
+        // 30-day ember window; validator timestamp drift cannot meaningfully shift it.
+        // forge-lint: disable-next-line(block-timestamp)
+        require(block.timestamp <= releaseDeadline, "release window closed");
         require(decryptionKeys.length == updates.length + 1, "key count mismatch");
         require(keccak256(bytes(decryptionKeys[0])) == originalCommitment, "wrong genesis key");
         for (uint256 i = 0; i < updates.length; i++) {
-            require(keccak256(bytes(decryptionKeys[i + 1])) == updates[i].commitment, "wrong update key");
+            uint256 keyIndex = i + 1;
+            require(keccak256(bytes(decryptionKeys[keyIndex])) == updates[i].commitment, "wrong update key");
         }
         released = true;
         _touchProjectActivity();
@@ -320,8 +326,10 @@ contract EmberCore is IEmber, IEmberRecovery {
         redemptionPaid += payout;
         _touchProjectActivity();
         emit Transfer(msg.sender, address(0), amount);
+        if (payout > 0) {
+            _safeUsdcTransfer(msg.sender, payout);
+        }
         emit Redeemed(msg.sender, amount, payout);
-        _safeUsdcTransfer(msg.sender, payout);
     }
 
     function redemptionReserveRemaining() public view returns (uint256) {
@@ -333,9 +341,8 @@ contract EmberCore is IEmber, IEmberRecovery {
     function devClaimable() public view override returns (uint256) {
         // Burn progress freezes at the trigger once the Ember Phase opens.
         uint256 burned = releaseDeadline == 0 ? totalBurned : triggerBurned;
-        uint256 progress = (burned * 1e18) / INITIAL_SUPPLY;
-        uint256 unreserved = (totalRaised * progress * (100 - RESERVED_PCT)) / (100 * 1e18);
-        uint256 reserved = released ? (totalRaised * progress * RESERVED_PCT) / (100 * 1e18) : 0;
+        uint256 unreserved = (totalRaised * burned * (100 - RESERVED_PCT)) / (INITIAL_SUPPLY * 100);
+        uint256 reserved = released ? (totalRaised * burned * RESERVED_PCT) / (INITIAL_SUPPLY * 100) : 0;
         uint256 vested = unreserved + reserved;
         return vested > devClaimed ? vested - devClaimed : 0;
     }
@@ -343,6 +350,7 @@ contract EmberCore is IEmber, IEmberRecovery {
     function withdrawDev() external override onlyDeveloper notAbandoned nonReentrant {
         uint256 amt = devClaimable();
         require(amt > 0, "nothing");
+        require(amt <= _availableUsdcExcludingRedemption(), "reserve protected");
         devClaimed += amt;
         _touchProjectActivity();
         _safeUsdcTransfer(developer, amt);
@@ -359,6 +367,7 @@ contract EmberCore is IEmber, IEmberRecovery {
         slashed = true;
         _touchProjectActivity();
         if (reservedAtTrigger > 0) {
+            require(reservedAtTrigger <= _availableUsdcExcludingRedemption(), "reserve protected");
             _safeUsdcTransfer(address(0xdEaD), reservedAtTrigger);
             emit ReserveSlashed(reservedAtTrigger);
         }
@@ -369,6 +378,7 @@ contract EmberCore is IEmber, IEmberRecovery {
     function recoverAbandonedCapital() external override nonReentrant {
         require(!abandonedRecovered, "already recovered");
         require(recoveryTreasury != address(0) && recoveryCommissionRecipient != address(0), "recovery disabled");
+        require(msg.sender == recoveryTreasury || msg.sender == recoveryCommissionRecipient, "not recovery recipient");
         // 1-year inactivity gate; seconds of validator drift are immaterial.
         // forge-lint: disable-next-line(block-timestamp)
         require(block.timestamp > lastProjectActivity + ABANDONMENT_TIMEOUT, "project active");
@@ -383,8 +393,12 @@ contract EmberCore is IEmber, IEmberRecovery {
         uint256 commissionAmount = (recoverable * 10) / 100;
         uint256 treasuryAmount = recoverable - commissionAmount;
 
-        _safeUsdcTransfer(recoveryTreasury, treasuryAmount);
-        _safeUsdcTransfer(recoveryCommissionRecipient, commissionAmount);
+        if (treasuryAmount > 0) {
+            _safeUsdcTransfer(recoveryTreasury, treasuryAmount);
+        }
+        if (commissionAmount > 0) {
+            _safeUsdcTransfer(recoveryCommissionRecipient, commissionAmount);
+        }
         emit AbandonedCapitalRecovered(treasuryAmount, commissionAmount);
         if (!wasTerminated) {
             emit ContractTerminated(totalBurned, block.timestamp);
@@ -424,6 +438,7 @@ contract EmberCore is IEmber, IEmberRecovery {
     }
 
     function approve(address s, uint256 v) external returns (bool) {
+        require(s != address(0), "zero address");
         _allowances[msg.sender][s] = v;
         emit Approval(msg.sender, s, v);
         return true;
@@ -437,7 +452,10 @@ contract EmberCore is IEmber, IEmberRecovery {
     function transferFrom(address f, address t, uint256 v) external returns (bool) {
         uint256 a = _allowances[f][msg.sender];
         require(a >= v, "allowance");
-        if (a != type(uint256).max) _allowances[f][msg.sender] = a - v;
+        if (a != type(uint256).max) {
+            _allowances[f][msg.sender] = a - v;
+            emit Approval(f, msg.sender, a - v);
+        }
         _transfer(f, t, v);
         return true;
     }
@@ -445,22 +463,32 @@ contract EmberCore is IEmber, IEmberRecovery {
     function _transfer(address f, address t, uint256 v) internal {
         require(f != address(0) && t != address(0), "zero address");
         require(_balances[f] >= v, "balance");
-        unchecked {
-            _balances[f] -= v;
-            _balances[t] += v;
-        }
+        _balances[f] -= v;
+        _balances[t] += v;
         emit Transfer(f, t, v);
+    }
+
+    function _availableUsdcExcludingRedemption() internal view returns (uint256) {
+        uint256 balance = USDC.balanceOf(address(this));
+        uint256 protectedRedemptionReserve = redemptionReserveRemaining();
+        return balance > protectedRedemptionReserve ? balance - protectedRedemptionReserve : 0;
     }
 
     function _safeUsdcTransfer(address to, uint256 value) internal {
         (bool success, bytes memory data) = address(USDC).call(abi.encodeCall(IERC20Token.transfer, (to, value)));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC transfer failed");
+        require(success, "USDC transfer failed");
+        if (data.length > 0) {
+            require(abi.decode(data, (bool)), "USDC transfer failed");
+        }
     }
 
     function _safeUsdcTransferFrom(address from, address to, uint256 value) internal {
         (bool success, bytes memory data) =
             address(USDC).call(abi.encodeCall(IERC20Token.transferFrom, (from, to, value)));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC pull failed");
+        require(success, "USDC pull failed");
+        if (data.length > 0) {
+            require(abi.decode(data, (bool)), "USDC pull failed");
+        }
     }
 
     function _touchProjectActivity() internal {

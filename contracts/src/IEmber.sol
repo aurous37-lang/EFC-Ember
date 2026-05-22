@@ -43,7 +43,7 @@ interface IEmber is IERC165 {
     function redemptionQuote(uint256 amount) external view returns (uint256);
 
     // === State-changing functions ===
-    function buy(uint256 amount) external;
+    function buy(uint256 amount, uint256 maxCost) external;
     function useApp(address user, uint256 amount) external returns (bool);
     function forceEmberPhase() external;
     function release(string[] calldata decryptionKeys) external;

@@ -95,6 +95,7 @@ contract MaintenancePool {
 
     constructor(address _emberToken, address _governor, address _usdc, GovernanceMode _mode, uint256 _timelockDelay) {
         require(_emberToken != address(0) && _usdc != address(0), "bad params");
+        require(_emberToken.code.length > 0, "ember not contract");
         // Reject a non-contract payment token: the empty-returndata branch of the
         // safe-transfer wrappers would otherwise pass silently on a bad address.
         require(_usdc.code.length > 0, "USDC not contract");
@@ -177,22 +178,23 @@ contract MaintenancePool {
         if (p.ptype == ProposalType.Draw) {
             require(USDC.balanceOf(address(this)) >= p.amount, "insufficient");
             lastDrawTimestamp = block.timestamp;
-            emit Claimed(p.target, p.amount, p.reason);
             _safeUsdcTransfer(p.target, p.amount);
+            emit Claimed(p.target, p.amount, p.reason);
         } else if (p.ptype == ProposalType.GovernorChange) {
-            emit GovernorChanged(governor, p.target);
+            address oldGovernor = governor;
             governor = p.target;
+            emit GovernorChanged(oldGovernor, p.target);
         } else {
             // Sunset: re-validate inactivity at execution time so a draw during the
             // delay invalidates a stale wind-down.
             require(_sunsetReady(), "still active");
             closed = true;
             uint256 bal = USDC.balanceOf(address(this));
-            emit Sunset(p.target, bal, p.reason);
-            emit PoolClosed();
             if (bal > 0) {
                 _safeUsdcTransfer(p.target, bal);
             }
+            emit Sunset(p.target, bal, p.reason);
+            emit PoolClosed();
         }
 
         emit ProposalExecuted(id);
@@ -215,12 +217,18 @@ contract MaintenancePool {
 
     function _safeUsdcTransfer(address to, uint256 value) internal {
         (bool success, bytes memory data) = address(USDC).call(abi.encodeCall(IERC20Token.transfer, (to, value)));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC transfer failed");
+        require(success, "USDC transfer failed");
+        if (data.length > 0) {
+            require(abi.decode(data, (bool)), "USDC transfer failed");
+        }
     }
 
     function _safeUsdcTransferFrom(address from, address to, uint256 value) internal {
         (bool success, bytes memory data) =
             address(USDC).call(abi.encodeCall(IERC20Token.transferFrom, (from, to, value)));
-        require(success && (data.length == 0 || abi.decode(data, (bool))), "USDC pull failed");
+        require(success, "USDC pull failed");
+        if (data.length > 0) {
+            require(abi.decode(data, (bool)), "USDC pull failed");
+        }
     }
 }

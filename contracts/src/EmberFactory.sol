@@ -11,6 +11,9 @@ import "./IERC20Token.sol";
 /// @notice Deploys EmberCore with the 1.3% fee wired in, enforces an OSI-approved
 ///         SPDX allowlist as a product policy, and registers deployments.
 contract EmberFactory {
+    uint256 private constant _NOT_ENTERED = 1;
+    uint256 private constant _ENTERED = 2;
+
     address public immutable STANDARD_AUTHOR;
     address public immutable RECOVERY_TREASURY;
     MaintenancePoolFactory public immutable POOL_FACTORY;
@@ -32,6 +35,7 @@ contract EmberFactory {
     address[] public deployments;
     mapping(address => DeploymentInfo) public info;
     mapping(address => address[]) public devProjects;
+    uint256 private _reentrancyStatus;
 
     event Deployed(
         address indexed token,
@@ -49,14 +53,23 @@ contract EmberFactory {
         _;
     }
 
+    modifier nonReentrant() {
+        require(_reentrancyStatus != _ENTERED, "reentrant");
+        _reentrancyStatus = _ENTERED;
+        _;
+        _reentrancyStatus = _NOT_ENTERED;
+    }
+
     constructor(address standardAuthor, address recoveryTreasury, address poolFactory) {
         require(standardAuthor != address(0), "no standard author");
         require(recoveryTreasury != address(0), "no recovery treasury");
         require(poolFactory != address(0), "no pool factory");
+        require(poolFactory.code.length > 0, "pool factory not contract");
         STANDARD_AUTHOR = standardAuthor;
         RECOVERY_TREASURY = recoveryTreasury;
         POOL_FACTORY = MaintenancePoolFactory(poolFactory);
         owner = msg.sender;
+        _reentrancyStatus = _NOT_ENTERED;
     }
 
     /// @notice Material Synced curates the OSI-approved SPDX allowlist off-chain
@@ -97,7 +110,7 @@ contract EmberFactory {
         address poolGovernor,
         uint256 poolTimelockDelay,
         bytes32 parentDeployment
-    ) external returns (address ember, address pool) {
+    ) external nonReentrant returns (address ember, address pool) {
         // Product policy: factory deployments must carry an OSI-approved license.
         require(approvedLicense[keccak256(bytes(srcManifest.spdxLicense))], "license not OSI-approved");
         // Explicit factory-level address validation. `dApp` is also enforced by the
@@ -105,6 +118,7 @@ contract EmberFactory {
         // fast here with clear messages rather than relying on downstream reverts.
         require(dApp != address(0), "no dApp");
         require(usdc != address(0), "no USDC");
+        require(usdc.code.length > 0, "USDC not contract");
         // Product policy: the sale token must be 6-decimal USDC (the bonding curve assumes 6 decimals).
         require(IERC20Token(usdc).decimals() == 6, "USDC decimals");
 
@@ -128,23 +142,23 @@ contract EmberFactory {
             )
         );
 
-        if (spawnMaintenancePool) {
-            // poolGovernor is only meaningful when a pool is actually spawned.
-            require(poolGovernor != address(0), "no governor");
-            pool = POOL_FACTORY.create(ember, poolGovernor, usdc, poolMode, poolTimelockDelay);
-        }
-
         deployments.push(ember);
         info[ember] = DeploymentInfo({
             developer: msg.sender,
             deployedAt: block.timestamp,
-            maintenancePool: pool,
+            maintenancePool: address(0),
             parentDeployment: parentDeployment,
             licenseVerified: true
         });
         devProjects[msg.sender].push(ember);
 
-        emit Deployed(ember, msg.sender, pool, parentDeployment, true);
+        emit Deployed(ember, msg.sender, address(0), parentDeployment, true);
+
+        if (spawnMaintenancePool) {
+            // poolGovernor is only meaningful when a pool is actually spawned.
+            require(poolGovernor != address(0), "no governor");
+            pool = POOL_FACTORY.create(ember, poolGovernor, usdc, poolMode, poolTimelockDelay);
+        }
     }
 
     function deploymentCount() external view returns (uint256) {

@@ -4,13 +4,14 @@ This repo now has Foundry scripts for the launch path:
 
 1. Deploy `MaintenancePoolFactory`.
 2. Deploy `EmberFactory` wired to the pool factory.
-3. Check the factory wiring.
-4. Seed the SPDX allowlist.
-5. Check the SPDX allowlist state.
-6. Check the canonical USDC address.
-7. Hand factory ownership to the operations owner or multisig.
-8. Deploy ERC-EMBER projects through the factory.
-9. Check the deployed project wiring.
+3. Authorize the deployed `EmberFactory` as the pool factory's only caller.
+4. Check the factory wiring.
+5. Seed the SPDX allowlist.
+6. Check the SPDX allowlist state.
+7. Check the canonical USDC address.
+8. Hand factory ownership to the operations owner or multisig.
+9. Deploy ERC-EMBER projects through the factory.
+10. Check the deployed project wiring.
 
 The scripts are intentionally thin wrappers around the contracts. They do not
 custody funds, store keys, or bypass contract validation.
@@ -63,6 +64,9 @@ forge script script/DeployFactory.s.sol:DeployFactory \
   --broadcast \
   --verify
 ```
+
+The script also calls `MaintenancePoolFactory.setEmberFactory` before ending the
+broadcast, so pool creation is restricted to the deployed `EmberFactory`.
 
 Record both emitted deployment addresses from the broadcast output:
 
@@ -187,6 +191,11 @@ After deployment, set:
 - `PROJECT_DEVELOPER` to the address derived from `PROJECT_DEPLOYER_PRIVATE_KEY`.
 - `EMBER_PROJECT_MAINTENANCE_POOL` to the deployed pool address, or zero if no
   pool was spawned.
+
+`EmberFactory.info(ember).maintenancePool` is intentionally zero even when a pool
+is spawned. The project check verifies the pool directly from
+`EMBER_PROJECT_MAINTENANCE_POOL`; this keeps `deploy` free of state writes after
+the external pool-factory call.
 
 Then run:
 

@@ -88,7 +88,7 @@ contract CheckProjectDeployment is Script {
             factory.info(ember);
 
         require(developer == vm.envAddress("PROJECT_DEVELOPER"), "registry developer mismatch");
-        require(maintenancePool == vm.envAddress("EMBER_PROJECT_MAINTENANCE_POOL"), "registry pool mismatch");
+        require(maintenancePool == address(0), "registry pool should be zero");
         require(parentDeployment == vm.envBytes32("PARENT_DEPLOYMENT"), "parent mismatch");
         require(licenseVerified, "license not verified");
     }

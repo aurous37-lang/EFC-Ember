@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import "forge-std/Script.sol";
 
 import "../src/EmberFactory.sol";
+import "../src/MaintenancePoolFactory.sol";
 
 /// @notice Read-only launch check for an already deployed EmberFactory.
 contract CheckFactoryDeployment is Script {
@@ -27,6 +28,7 @@ contract CheckFactoryDeployment is Script {
         require(factory.STANDARD_AUTHOR() == expectedStandardAuthor, "standard author mismatch");
         require(factory.RECOVERY_TREASURY() == expectedRecoveryTreasury, "recovery treasury mismatch");
         require(address(factory.POOL_FACTORY()) == expectedPoolFactory, "pool factory mismatch");
+        require(MaintenancePoolFactory(expectedPoolFactory).emberFactory() == address(factory), "pool caller mismatch");
         require(factory.owner() == expectedOwner, "owner mismatch");
         require(factory.pendingOwner() == expectedPendingOwner, "pending owner mismatch");
     }

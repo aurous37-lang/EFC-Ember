@@ -56,7 +56,7 @@ contract EmberCoreHalmosTest is Test {
         usdc.mint(buyer, cost);
         vm.startPrank(buyer);
         usdc.approve(address(ember), cost);
-        ember.buy(amount);
+        ember.buy(amount, cost);
         vm.stopPrank();
     }
 
@@ -81,6 +81,8 @@ contract EmberCoreHalmosTest is Test {
     function check_quorumRedemptionDoesNotOverpay() public {
         _buy(SUPPLY);
 
+        vm.prank(buyer);
+        ember.approve(dapp, 80);
         vm.prank(dapp);
         ember.useApp(buyer, 80);
         vm.warp(block.timestamp + ember.RELEASE_TIMEOUT() + 1);
