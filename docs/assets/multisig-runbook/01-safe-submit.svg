@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Safe submit ownership acceptance screenshot template">
+  <rect width="1280" height="720" fill="#f5f7f8"/>
+  <rect x="64" y="56" width="1152" height="608" rx="8" fill="#fff" stroke="#cbd5d9"/>
+  <text x="96" y="112" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111315">Safe transaction: acceptOwnership()</text>
+  <text x="96" y="168" font-family="Arial, sans-serif" font-size="20" fill="#485157">Target: EmberFactory</text>
+  <rect x="96" y="196" width="1088" height="64" rx="6" fill="#f7f9fa" stroke="#d9e0e3"/>
+  <text x="120" y="236" font-family="Consolas, monospace" font-size="18" fill="#111315">0x... factory address</text>
+  <text x="96" y="316" font-family="Arial, sans-serif" font-size="20" fill="#485157">Calldata</text>
+  <rect x="96" y="344" width="1088" height="64" rx="6" fill="#f7f9fa" stroke="#d9e0e3"/>
+  <text x="120" y="384" font-family="Consolas, monospace" font-size="18" fill="#111315">0x79ba5097</text>
+  <rect x="96" y="500" width="232" height="48" rx="6" fill="#172026"/>
+  <text x="138" y="532" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#fff">Submit</text>
+</svg>

@@ -18,13 +18,21 @@ contracts/
 │   ├── EmberFactory.sol
 │   ├── MaintenancePool.sol
 │   └── MaintenancePoolFactory.sol
+├── script/
+│   ├── DeployFactory.s.sol
+│   ├── DeployProject.s.sol
+│   ├── CheckProjectDeployment.s.sol
+│   ├── CheckFactoryDeployment.s.sol
+│   ├── CheckCanonicalUSDC.s.sol
+│   ├── CheckLicenseApproval.s.sol
+│   ├── AcceptFactoryOwnership.s.sol
+│   ├── SeedLicenseApproval.s.sol
+│   └── StartFactoryOwnershipTransfer.s.sol
 └── test/
     ├── EmberCore.t.sol
     ├── EmberFactoryPool.t.sol
     ├── MaintenancePool.t.sol
-    └── mocks/
-        ├── MockUSDC.sol
-        └── MockToken18.sol
+    └── mocks/MockUSDC.sol
 ```
 
 `IEmber.sol` is the neutral ERC surface. `IEmberRecovery.sol` is an optional
@@ -45,7 +53,7 @@ Install the test dependency:
 
 ```bash
 cd contracts
-git clone --branch v1.16.1 --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
+forge install --root . foundry-rs/forge-std
 ```
 
 `lib/` is ignored by git, so a fresh clone should run the install command before
@@ -82,38 +90,37 @@ there is no ongoing standard-author payment stream.
 
 `EmberFactory` spawns maintenance pools through an external `MaintenancePoolFactory`
 (this keeps `EmberFactory` under the EIP-170 size limit), so deploy that first and
-pass its address to the `EmberFactory` constructor.
+pass its address to the `EmberFactory` constructor. The launch scripts in
+`script/` automate this sequence and the project deploy path; see
+`../docs/launch-deployer.md`.
 
 Deploy only after `forge fmt --check`, `forge build --force`, `forge test -vvv`,
 and `forge build --sizes` pass:
 
 ```bash
-forge create src/MaintenancePoolFactory.sol:MaintenancePoolFactory \
-  --rpc-url <rpc-url> \
-  --private-key <deployer-private-key>
-
-forge create src/EmberFactory.sol:EmberFactory \
-  --constructor-args <standardAuthor> <recoveryTreasury> <maintenancePoolFactory> \
-  --rpc-url <rpc-url> \
-  --private-key <deployer-private-key>
+forge script script/DeployFactory.s.sol:DeployFactory \
+  --rpc-url "$RPC_URL" \
+  --broadcast \
+  --verify
 ```
 
 After deployment, seed the OSI license allowlist with `setLicenseApproval`
-before accepting product deployments. `deploy(...)` enforces that the `usdc` sale
-token reports `decimals() == 6` (the bonding curve assumes 6 decimals); `EmberCore`
-itself is neutral about decimals. When a product opts into a maintenance pool,
-`deploy(...)` takes a `poolTimelockDelay` (seconds, bounded to [1 day, 30 days];
-recommended 7 days for production, 1 day for testnet).
+before accepting product deployments. The checked-in
+`script/SeedLicenseApproval.s.sol` script seeds one SPDX identifier per run.
+`deploy(...)` enforces that the `usdc` sale token reports `decimals() == 6` (the
+bonding curve assumes 6 decimals); `EmberCore` itself is neutral about decimals.
+When a product opts into a maintenance pool, `deploy(...)` takes a
+`poolTimelockDelay` (seconds, bounded to [1 day, 30 days]; recommended 7 days for
+production, 1 day for testnet).
 
-## Verification
+## Current verification
 
-Run `forge fmt --check`, `forge build --force`, `forge test -vvv`, and
-`forge build --sizes` before deployment or release. Use
-`forge coverage --ir-minimum` for local coverage; plain `forge coverage`
-disables `via_ir` and hits Solidity's stack-too-deep limit in this layout.
-
-`forge build --sizes` is the EIP-170 guard. Re-run it after any change that can
-increase factory or deployment-helper bytecode.
+- `forge build --force`: compiler successful, zero warnings
+- `forge test`: 47 passed, 0 failed
+- `forge build --sizes`: `EmberFactory` runtime size 20,154 bytes (4,422 below the
+  EIP-170 24,576-byte limit); `MaintenancePoolFactory` 7,376 bytes;
+  `MaintenancePool` 6,495 bytes; `EmberCore` 12,552 bytes
+- `forge coverage --ir-minimum`: 86.22% lines / 87.99% statements
 
 ## Test coverage
 
@@ -163,7 +170,7 @@ change that grows `EmberFactory`; factory size is the main bytecode-size risk.
 
 CI (`.github/workflows/foundry.yml`) runs `forge fmt --check`, `forge build`,
 `forge test`, and `forge build --sizes` (an EIP-170 size gate). Coverage is run
-locally with `forge coverage --ir-minimum`; it is kept out of CI because plain
+locally with `forge coverage --ir-minimum` — it is kept out of CI because plain
 `forge coverage` disables `via_ir` and hits Solidity's stack-too-deep limit.
 
 `MaintenancePool` is optional companion infrastructure. Every outflow and governor

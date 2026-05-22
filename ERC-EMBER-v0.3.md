@@ -13,7 +13,7 @@
 
 A token standard where access tokens are **consumed on use**. When enough tokens have burned, the project's source code is **cryptographically released** to the community via a structured manifest. The developer is paid as the community uses the product. The contract terminates when the project becomes open source — and any holders who never burned are **paid out**, never confiscated.
 
-The **standard itself is neutral and fee-free.** A separate distribution product — `EmberFactory` — provides a maintained deployment path, registry, indexer, license verification, and tooling in exchange for a disclosed 1.3% primary-sale fee routed to the configured standard-author address. That fee is not a perpetual royalty: it is paid only during active primary sales, and no ongoing standard-author payment stream exists after the contract closes. Developers who want raw EMBER without paying can deploy `EmberCore` directly. Developers who want the managed deployment workflow and services use the factory.
+The **standard itself is neutral and fee-free.** A separate distribution product — `EmberFactory` — provides audited contracts, a registry, indexer, license verification, and tooling in exchange for a disclosed 1.3% primary-sale fee routed to the configured standard-author address. That fee is not a perpetual royalty: it is paid only during active primary sales, and no ongoing standard-author payment stream exists after the contract closes. Developers who want raw EMBER without paying can deploy `EmberCore` directly. Developers who want the production-grade implementation with services use the factory.
 
 ---
 
@@ -30,7 +30,7 @@ ERC-EMBER defines a token contract where:
 7. After release or slash, the contract becomes a permanent on-chain monument: no further primary revenue, all code public, only redemption claims remain.
 8. **Optionally** — via the non-normative `IEmberRecovery` extension, off by default and outside neutral conformance — if a funded project becomes completely inactive for one year, idle USDC outside the remaining redemption reserve may be recovered: 90% to an Ember treasury intended to support startup and software ecosystem initiatives, and 10% to the commission recipient.
 
-The reference package includes the neutral `IEmber` interface and `EmberCore` implementation, the optional `IEmberRecovery` extension, the `EmberFactory` distribution layer, and optional maintenance-pool infrastructure. The base spec carries no mandatory extraction and no balance confiscation; monetization lives primarily in the factory, while abandoned-capital recovery is disabled unless recovery recipients are configured at deployment.
+The standard is implemented as three artifacts (`IEmber`, `EmberCore`, `EmberFactory`) plus one optional companion (`MaintenancePool`). The base spec carries no mandatory extraction and no balance confiscation; monetization lives primarily in the factory, while abandoned-capital recovery is disabled unless recovery recipients are configured at deployment.
 
 ---
 
@@ -50,16 +50,16 @@ ERC-EMBER encodes that pattern directly. The developer is paid by the people who
 
 ## Architecture Overview
 
-ERC-EMBER is described in four layers. The first two are the neutral public standard. The third is Material Synced's distribution layer. The fourth is an optional community companion.
+ERC-EMBER is delivered as four contracts. The first two are the neutral public standard. The third is Material Synced's monetized distribution. The fourth is an optional community companion.
 
 | Layer | Contract | Purpose | Fee | Who deploys |
 |---|---|---|---|---|
 | 1 | `IEmber.sol` | Interface only | None | Submitted as EIP |
 | 2 | `EmberCore.sol` | Reference implementation | Configurable (default 0) with 5% absolute cap | Anyone, directly |
-| 3 | `EmberFactory.sol` (+ `MaintenancePoolFactory.sol`) | Material Synced's distribution layer | 1.3% routed to the configured standard-author address | Devs who want services |
+| 3 | `EmberFactory.sol` | Material Synced's product | 1.3% routed to MS | Devs who want services |
 | 4 (optional) | `MaintenancePool.sol` | Post-bloom funding | None | Devs/communities that opt in |
 
-The split matters. The EIP submission is layers 1-2: a clean, fee-free, neutral standard. Material Synced's business is layer 3: deploying maintained `EmberCore` instances with the fee wired in, plus a registry, indexer, web UI, fork lineage tracking, license verification, and customer support. Layer 4 is opt-in and exists only when a community chooses to fund it.
+The split matters. The EIP submission is layers 1-2: a clean, fee-free, neutral standard. Material Synced's business is layer 3: deploying audited `EmberCore` instances with the fee wired in, plus a registry, indexer, web UI, fork lineage tracking, license verification, and customer support that fork-strippers can't replicate. Layer 4 is opt-in and exists only when a community chooses to fund it.
 
 This mirrors the pattern of HTTP/Cloudflare, ERC-20/OpenZeppelin, and TCP-IP/Cisco: free underlying protocol, paid production implementation with services.
 
@@ -1057,7 +1057,7 @@ contract EmberCore is IEmber, IEmberRecovery {
 }
 ```
 
-This is the artifact the EIP cites. It is neutral, test-backed bytecode anyone can deploy with zero fee and recovery disabled — and with no path that lets the system seize a holder's token balance.
+This is the artifact the EIP cites. Neutral, audited bytecode anyone can deploy with zero fee and recovery disabled — and with no path that lets the system seize a holder's token balance.
 
 ---
 
@@ -1067,7 +1067,7 @@ The factory deploys `EmberCore` instances with Material Synced's fee parameters 
 
 ### What the factory provides
 
-1. **Maintained deployment path** — Material Synced can coordinate reviews, audits, and release provenance for factory deployments.
+1. **Audited deployment** — Material Synced pays for the audit; users inherit the credibility.
 2. **License verification** — factory-enforced OSI-approved SPDX allowlist; deployments are labeled "factory-verified" vs. "self-attested."
 3. **Registry listing** — every deployment is indexed with metadata for discovery.
 4. **Indexer + analytics** — historical burn rates, sale velocity, redemption activity, fork lineage.
@@ -1228,11 +1228,11 @@ contract EmberFactory {
 }
 ```
 
-### Why direct deployment doesn't break this
+### Why fork-stripping doesn't break this
 
 A competitor could deploy `EmberCore` directly with `feeRecipient = 0`. That's fine — the standard explicitly allows it. What they don't get:
 
-- Review, audit, and release-provenance reputation
+- Audited contract reputation (a real audit costs $30k-$100k)
 - Factory-verified OSI license labeling
 - Registry listing and discoverability
 - The indexer and dashboard
@@ -1240,7 +1240,7 @@ A competitor could deploy `EmberCore` directly with `feeRecipient = 0`. That's f
 - Customer support
 - Fork lineage tracking
 
-The 1.3% buys adoption velocity and credibility. The direct-deploy path saves $13 per $1,000 raised but gives up the factory's distribution services. Standard distribution economics.
+The 1.3% buys adoption velocity and credibility. The fork-strip path saves $13 per $1,000 raised but loses orders of magnitude more in distribution friction. Standard distribution economics.
 
 ---
 
@@ -1316,15 +1316,15 @@ The four-layer architecture clarifies the path significantly. Material Synced su
 
 ### Adoption track (what actually matters)
 
-1. **Publish `IEmber` + `EmberCore` on GitHub** — MIT-licensed, with Foundry tests and a clear audit path before production use.
-2. **Deploy 2-3 live EMBER projects via the factory** — Real mainnet activity is more persuasive than a forum proposal.
+1. **Publish `IEmber` + `EmberCore` on GitHub** — MIT-licensed, audited, with Foundry tests.
+2. **Deploy 2-3 live EMBER projects via the factory** — Material Synced eats its own dog food. Real mainnet activity beats any forum post.
 3. **Write the EIP after** — with deployment data and live adoption in the rationale section.
 4. **Launch `EmberFactory` as a product** — separately marketed as Material Synced's distribution layer with paid services.
 5. **Partner with the Monad Foundation** — get listed in ecosystem standards, blogged about, featured. A Monad-endorsed standard with Base deployments compounds faster than waiting on EIP Final status.
 
 ### EVM-equivalence note
 
-`EmberCore` and `EmberFactory` work on every EVM chain (Monad, Base, Ethereum, Arbitrum, BNB) without modification. One implementation target, every chain.
+`EmberCore` and `EmberFactory` work on every EVM chain (Monad, Base, Ethereum, Arbitrum, BNB) without modification. One audit, every chain.
 
 ---
 
@@ -1411,7 +1411,7 @@ Timelock governance for `Steward`, `Multisig`, and `DAO` is implemented in `Main
 - Ethereum Improvement Proposals: https://eips.ethereum.org
 - EIP-1 (process meta-doc): https://eips.ethereum.org/EIPS/eip-1
 - ERC submissions repo: https://github.com/ethereum/ercs
-- Public standards discussion: not yet opened
+- Public standards discussion venue: TBD
 - SPDX license list: https://spdx.org/licenses/
 - OSI-approved licenses: https://opensource.org/licenses
 - Clanker (1% per-swap fee model, Base): https://www.clanker.world

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Safe executed transaction screenshot template">
+  <rect width="1280" height="720" fill="#f5f7f8"/>
+  <rect x="64" y="56" width="1152" height="608" rx="8" fill="#fff" stroke="#cbd5d9"/>
+  <circle cx="126" cy="126" r="26" fill="#dff3eb"/>
+  <path d="M112 127l10 10 20-24" fill="none" stroke="#106343" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="176" y="136" font-family="Arial, sans-serif" font-size="30" font-weight="700" fill="#111315">Transaction executed</text>
+  <text x="96" y="212" font-family="Arial, sans-serif" font-size="20" fill="#485157">Function</text>
+  <rect x="96" y="240" width="1088" height="64" rx="6" fill="#f7f9fa" stroke="#d9e0e3"/>
+  <text x="120" y="280" font-family="Consolas, monospace" font-size="18" fill="#111315">acceptOwnership()</text>
+  <text x="96" y="360" font-family="Arial, sans-serif" font-size="20" fill="#485157">Transaction hash</text>
+  <rect x="96" y="388" width="1088" height="64" rx="6" fill="#f7f9fa" stroke="#d9e0e3"/>
+  <text x="120" y="428" font-family="Consolas, monospace" font-size="18" fill="#111315">0x... executed tx hash</text>
+</svg>

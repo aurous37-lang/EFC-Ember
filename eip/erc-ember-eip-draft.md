@@ -21,7 +21,7 @@ requires: 20, 165
    1. Prescriptiveness: `IEmber` AND the burn → Ember Phase → release/slash/
       termination lifecycle are normative. Pricing curve, sale mechanics, storage
       backend, fee/treasury policy, and maintenance funding are implementation-defined.
-   2. ERC-165: required. `IEmber is IERC165`; preamble `requires: 20, 165`.
+   2. ERC-165: required. `IEmber is IERC165`; preamble `requires: 165`.
    3. Abandoned recovery: NOT in the neutral standard. It is an optional, non-normative
       extension (`IEmberRecovery`); treasury/commission routing is excluded from core
       conformance.

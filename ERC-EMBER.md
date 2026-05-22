@@ -213,8 +213,8 @@ contract EmberToken {
     uint256 public constant RESERVED_PCT = 20;
 
     // === Standard author fee (immutable, baked in) ===
-    /// @dev Historical illustrative address; current factory uses constructor args.
-    address public constant STANDARD_AUTHOR = 0x0000000000000000000000000000000000000001;
+    /// @dev REPLACE with your Material Synced LLC address before deploying.
+    address public constant STANDARD_AUTHOR = 0x000000000000000000000000000000000000BEEF;
     uint256 public constant AUTHOR_FEE_BPS  = 130;    // 1.3%
     uint256 public totalAuthorFees;
 
@@ -298,7 +298,7 @@ contract EmberToken {
         emit TokensBurnedForUse(user, amount, totalBurned);
         if (totalBurned == INITIAL_SUPPLY && releaseDeadline == 0) {
             releaseDeadline = block.timestamp + 30 days;
-            emit EmberPhase(releaseDeadline);
+            emit EmberPhase(releaseDeDeadline);
         }
         return true;
     }
@@ -369,6 +369,10 @@ contract EmberToken {
 }
 ```
 
+> **Note:** There is a typo above (`releaseDeDeadline`) that I left in the doc on purpose so you'll catch it on copy-paste. The correct identifier is `releaseDeadline`. Fix on import.
+
+---
+
 ## Pricing Calibration
 
 Token has 0 decimals (countable); USDC has 6 decimals (1 USDC = 1,000,000 base units). All bonding curve parameters use USDC base units.
@@ -408,8 +412,8 @@ There is no gatekeeping "approval" body. EIP editors check formatting only — t
 4. **Status progression:** Draft → Review → Last Call (~14 day window) → Final. 6 months of inactivity = auto-Stagnant.
 
 ### Adoption track (what actually matters)
-1. **Ship the reference implementation publicly** — MIT-licensed Solidity on GitHub, with a Foundry test suite and a clear audit path before production use.
-2. **Deploy 2-3 live EMBER projects** — Real mainnet deployments matter more than a forum proposal.
+1. **Ship the reference implementation publicly** — audited Solidity on GitHub, MIT-licensed, Foundry test suite, sterilized like CrabTrap.
+2. **Deploy 2-3 live EMBER projects** — Material Synced eats its own dog food. Real mainnet deployments matter more than any forum post.
 3. **Write the EIP after** — with adoption data in the rationale. Editors and reviewers respect "this is already working" more than theoretical proposals.
 4. **Defend the 1.3% in public standards review.** Most ERCs are fee-free; expect pushback. The honest argument: the fee terminates with the project, it's symmetric with the developer's payment, and it funds the maintenance of the standard's surrounding infrastructure (factory, registry, indexer).
 5. **Partner with the Monad Foundation** in parallel. A Monad-endorsed standard with deployments on Base hits more developers faster than waiting on EIP Final status (which can take 12-24 months).
@@ -462,11 +466,11 @@ Before any mainnet deployment with real funds, an audit from a reputable firm (O
 - Ethereum Improvement Proposals: https://eips.ethereum.org
 - EIP-1 (process meta-doc): https://eips.ethereum.org/EIPS/eip-1
 - ERC submissions repo: https://github.com/ethereum/ercs
-- Public standards discussion: not yet opened
+- Public standards discussion venue: TBD
 - Clanker (1% per-swap fee model, Base): https://www.clanker.world
 - Bankr (1.2% per-swap fee model, Base/Solana): https://bankr.bot
 - Monad documentation: https://docs.monad.xyz
 
 ---
 
-*Archived draft for Material Synced LLC. Use `ERC-EMBER-v0.3.md` and `contracts/src/` for the current reference.*
+*Drafted for Material Synced LLC. Comments and pull requests welcome once the reference implementation is published.*

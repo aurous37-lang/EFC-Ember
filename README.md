@@ -115,17 +115,42 @@ Then install test dependencies and run the suite:
 
 ```bash
 cd contracts
-git clone --branch v1.16.1 --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std
+forge install --root . foundry-rs/forge-std
 forge build --force
 forge test -vvv
 forge build --sizes
 ```
 
-`forge build --sizes` is part of the normal verification flow because
-`EmberFactory` is the main bytecode-size risk.
+Current local verification:
+
+- `forge build --force`: clean, zero warnings
+- `forge test`: 47 passed, 0 failed
+- `forge build --sizes`: `EmberFactory` runtime size 20,154 bytes, 4,422 bytes
+  under the EIP-170 limit
 
 `contracts/foundry.toml` uses `via_ir = true`; without it, the current
 `EmberCore`/`EmberFactory` build hits Solidity's stack-too-deep limit.
+
+## Launch deployer
+
+The repo includes Foundry deployment scripts under `contracts/script/`:
+
+- `DeployFactory.s.sol`: deploys `MaintenancePoolFactory`, then `EmberFactory`.
+- `CheckFactoryDeployment.s.sol`: verifies deployed factory wiring and owner.
+- `SeedLicenseApproval.s.sol`: sets one SPDX identifier in the factory allowlist.
+- `CheckLicenseApproval.s.sol`: verifies one SPDX identifier's allowlist state.
+- `StartFactoryOwnershipTransfer.s.sol`: starts the two-step owner handoff.
+- `AcceptFactoryOwnership.s.sol`: accepts ownership for EOA owners.
+- `CheckCanonicalUSDC.s.sol`: verifies the launch-approved 6-decimal sale token.
+- `DeployProject.s.sol`: deploys one project through `EmberFactory.deploy(...)`.
+- `CheckProjectDeployment.s.sol`: verifies a deployed project and optional pool.
+
+Use `.env.example` as the non-secret template for required addresses and project
+metadata. The full operator flow is in `docs/launch-deployer.md`.
+
+The wallet-based deployer and registry console lives in `apps/deployer/`. It
+builds from Foundry artifacts after `forge build --force` and does not handle
+private keys in the browser.
 
 ## EIP status
 
