@@ -1,0 +1,17 @@
+# Foundry build output and local dependency installs
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Local environment/editor files
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

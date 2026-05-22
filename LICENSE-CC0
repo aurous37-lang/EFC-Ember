@@ -1,0 +1,12 @@
+CC0 1.0 Universal
+
+SPDX-License-Identifier: CC0-1.0
+
+To the extent possible under law, Material Synced LLC has waived all copyright
+and related or neighboring rights to the ERC-EMBER EIP document
+(eip/erc-ember-eip-draft.md). This work is published from the United States.
+
+This applies to the EIP document only. Source code in this repository
+(contracts/, etc.) is licensed under MIT — see the SPDX headers in those files.
+
+Full CC0 1.0 legal text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
