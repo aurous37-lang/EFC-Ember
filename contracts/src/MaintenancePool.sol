@@ -95,6 +95,9 @@ contract MaintenancePool {
 
     constructor(address _emberToken, address _governor, address _usdc, GovernanceMode _mode, uint256 _timelockDelay) {
         require(_emberToken != address(0) && _usdc != address(0), "bad params");
+        // Reject a non-contract payment token: the empty-returndata branch of the
+        // safe-transfer wrappers would otherwise pass silently on a bad address.
+        require(_usdc.code.length > 0, "USDC not contract");
         require(_governor != address(0), "no governor");
         require(_timelockDelay >= MIN_TIMELOCK_DELAY && _timelockDelay <= MAX_TIMELOCK_DELAY, "bad delay");
         emberToken = _emberToken;

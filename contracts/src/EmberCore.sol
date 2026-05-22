@@ -135,6 +135,10 @@ contract EmberCore is IEmber, IEmberRecovery {
         require(_initialSupply > 0 && _developer != address(0) && _dApp != address(0), "bad params");
         require(_originalCommitment != bytes32(0), "no commitment");
         require(_usdc != address(0), "no USDC");
+        // A non-contract payment token makes the empty-returndata branch of the
+        // safe-transfer wrappers pass silently, minting EMBER for USDC that never
+        // moved. Reject it at deploy time.
+        require(_usdc.code.length > 0, "USDC not contract");
         require(_feeBps <= MAX_FEE_BPS, "fee exceeds cap");
         require(_feeBps == 0 || _feeRecipient != address(0), "no fee recipient");
         require(
@@ -183,28 +187,43 @@ contract EmberCore is IEmber, IEmberRecovery {
     }
 
     function buy(uint256 amount) external override notAbandoned nonReentrant {
+        _buy(amount, type(uint256).max);
+    }
+
+    /// @notice Slippage-protected buy: reverts if the curve cost exceeds `maxCost`.
+    /// @dev    Non-normative convenience overload. `buy(uint256)` is the IEmber
+    ///         surface; this guards callers against sandwiching on a sloped curve.
+    function buy(uint256 amount, uint256 maxCost) external notAbandoned nonReentrant {
+        _buy(amount, maxCost);
+    }
+
+    function _buy(uint256 amount, uint256 maxCost) internal {
         require(amount > 0 && _balances[address(this)] >= amount, "sold out");
         uint256 cost = quote(amount);
+        require(cost <= maxCost, "slippage");
 
         uint256 fee = feeBps > 0 ? (cost * feeBps) / 10_000 : 0;
         uint256 toProject = cost - fee;
 
+        // Effects: settle all state before any token call (checks-effects-interactions).
+        // The EMBER `_transfer` is an internal balance update with no callback, so it
+        // is an effect, not an interaction.
         tokensSold += amount;
         totalRaised += toProject;
         totalFeesPaid += fee;
-
-        _safeUsdcTransferFrom(msg.sender, address(this), cost);
-
-        if (fee > 0) {
-            _safeUsdcTransfer(feeRecipient, fee);
-            emit FeePaid(fee);
-        }
-
         _transfer(address(this), msg.sender, amount);
         if (_balances[address(this)] == 0 && sellOutTimestamp == 0) {
             sellOutTimestamp = block.timestamp;
         }
         _touchProjectActivity();
+
+        // Interactions: pull payment, then forward the optional fee.
+        _safeUsdcTransferFrom(msg.sender, address(this), cost);
+        if (fee > 0) {
+            _safeUsdcTransfer(feeRecipient, fee);
+            emit FeePaid(fee);
+        }
+
         emit TokensPurchased(msg.sender, amount, cost, fee);
     }
 

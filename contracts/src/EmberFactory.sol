@@ -100,6 +100,11 @@ contract EmberFactory {
     ) external returns (address ember, address pool) {
         // Product policy: factory deployments must carry an OSI-approved license.
         require(approvedLicense[keccak256(bytes(srcManifest.spdxLicense))], "license not OSI-approved");
+        // Explicit factory-level address validation. `dApp` is also enforced by the
+        // EmberCore constructor and `usdc` by the decimals() probe below, but fail
+        // fast here with clear messages rather than relying on downstream reverts.
+        require(dApp != address(0), "no dApp");
+        require(usdc != address(0), "no USDC");
         // Product policy: the sale token must be 6-decimal USDC (the bonding curve assumes 6 decimals).
         require(IERC20Token(usdc).decimals() == 6, "USDC decimals");
 
@@ -124,6 +129,8 @@ contract EmberFactory {
         );
 
         if (spawnMaintenancePool) {
+            // poolGovernor is only meaningful when a pool is actually spawned.
+            require(poolGovernor != address(0), "no governor");
             pool = POOL_FACTORY.create(ember, poolGovernor, usdc, poolMode, poolTimelockDelay);
         }
 

@@ -121,6 +121,86 @@ contract EmberFactoryPoolTest is Test {
         factory.transferOwnership(address(0));
     }
 
+    // deploy reverts on a zero dApp (explicit factory validation)
+    function test_DeployRejectsZeroDApp() public {
+        factory.setLicenseApproval("MIT", true);
+        vm.prank(dev);
+        vm.expectRevert(bytes("no dApp"));
+        factory.deploy(
+            "T",
+            "T",
+            1_000_000,
+            address(0), // dApp
+            keccak256("key0"),
+            "ipfs://enc",
+            _manifest("MIT"),
+            address(usdc),
+            10_000,
+            0,
+            false,
+            MaintenancePool.GovernanceMode.Multisig,
+            address(0),
+            POOL_DELAY,
+            bytes32(0)
+        );
+    }
+
+    // deploy reverts on a zero usdc (explicit, ahead of the decimals() probe)
+    function test_DeployRejectsZeroUsdc() public {
+        factory.setLicenseApproval("MIT", true);
+        vm.prank(dev);
+        vm.expectRevert(bytes("no USDC"));
+        factory.deploy(
+            "T",
+            "T",
+            1_000_000,
+            dapp,
+            keccak256("key0"),
+            "ipfs://enc",
+            _manifest("MIT"),
+            address(0), // usdc
+            10_000,
+            0,
+            false,
+            MaintenancePool.GovernanceMode.Multisig,
+            address(0),
+            POOL_DELAY,
+            bytes32(0)
+        );
+    }
+
+    // zero poolGovernor is allowed when no pool is spawned
+    function test_DeployAllowsZeroPoolGovernorWhenNoPool() public {
+        factory.setLicenseApproval("MIT", true);
+        (address ember, address pool) = _deploy("MIT", false, address(0));
+        assertTrue(ember != address(0), "ember deployed");
+        assertEq(pool, address(0), "no pool spawned");
+    }
+
+    // zero poolGovernor is rejected when a pool is spawned
+    function test_DeployRejectsZeroPoolGovernorWhenSpawning() public {
+        factory.setLicenseApproval("MIT", true);
+        vm.prank(dev);
+        vm.expectRevert(bytes("no governor"));
+        factory.deploy(
+            "T",
+            "T",
+            1_000_000,
+            dapp,
+            keccak256("key0"),
+            "ipfs://enc",
+            _manifest("MIT"),
+            address(usdc),
+            10_000,
+            0,
+            true, // spawnMaintenancePool
+            MaintenancePool.GovernanceMode.Multisig,
+            address(0), // poolGovernor
+            POOL_DELAY,
+            bytes32(0)
+        );
+    }
+
     // deploy reverts for an unapproved license
     function test_DeployRevertsUnapprovedLicense() public {
         vm.expectRevert(bytes("license not OSI-approved"));

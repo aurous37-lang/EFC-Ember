@@ -46,6 +46,11 @@ contract MaintenancePoolTest is Test {
         assertEq(hi.timelockDelay(), 30 days);
     }
 
+    function test_ConstructorRejectsNonContractUsdc() public {
+        vm.expectRevert(bytes("USDC not contract"));
+        new MaintenancePool(emberToken, governor, address(0xBEEF), MaintenancePool.GovernanceMode.Steward, DELAY);
+    }
+
     function test_ConstructorRejectsZeroParams() public {
         vm.expectRevert(bytes("no governor"));
         new MaintenancePool(emberToken, address(0), address(usdc), MaintenancePool.GovernanceMode.Steward, DELAY);

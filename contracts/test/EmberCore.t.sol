@@ -143,6 +143,94 @@ contract EmberCoreTest is Test {
         );
     }
 
+    function test_ConstructorRejectsNonContractUsdc() public {
+        IEmber.SourceManifest memory m = _manifest();
+        vm.expectRevert(bytes("USDC not contract"));
+        new EmberCore(
+            "No Code USDC",
+            "NCU",
+            SUPPLY,
+            developer,
+            dapp,
+            keccak256(bytes(KEY0)),
+            "ipfs://encrypted",
+            m,
+            address(0xBEEF), // non-zero EOA, no code
+            BASE_PRICE,
+            0,
+            address(0),
+            0,
+            address(0),
+            address(0)
+        );
+    }
+
+    function test_BuySlippageGuardRejectsHighCost() public {
+        uint256 amount = 10;
+        uint256 cost = ember.quote(amount);
+        usdc.mint(buyer, cost);
+        vm.startPrank(buyer);
+        usdc.approve(address(ember), cost);
+        vm.expectRevert(bytes("slippage"));
+        ember.buy(amount, cost - 1); // max below curve cost
+        vm.stopPrank();
+        assertEq(ember.balanceOf(buyer), 0, "no tokens minted on revert");
+    }
+
+    function test_BuySlippageGuardAllowsWithinMax() public {
+        uint256 amount = 10;
+        uint256 cost = ember.quote(amount);
+        usdc.mint(buyer, cost);
+        vm.startPrank(buyer);
+        usdc.approve(address(ember), cost);
+        ember.buy(amount, cost); // exactly at max succeeds
+        vm.stopPrank();
+        assertEq(ember.balanceOf(buyer), amount, "tokens delivered");
+        assertEq(ember.tokensSold(), amount, "sale recorded");
+    }
+
+    // A sloped curve: a front-runner who moves the price makes the victim's fixed
+    // max-cost revert instead of overpaying.
+    function test_BuySlippageGuardProtectsAgainstSandwich() public {
+        EmberCore sloped = new EmberCore(
+            "Sloped",
+            "SLP",
+            SUPPLY,
+            developer,
+            dapp,
+            keccak256(bytes(KEY0)),
+            "ipfs://encrypted",
+            _manifest(),
+            address(usdc),
+            BASE_PRICE,
+            1, // slope > 0 => price impact
+            address(0),
+            0,
+            address(0),
+            address(0)
+        );
+
+        uint256 victimMax = sloped.quote(100); // quote at current state
+
+        // front-runner buys first, pushing tokensSold (and the curve) up
+        address attacker = makeAddr("attacker");
+        uint256 attackCost = sloped.quote(1_000);
+        usdc.mint(attacker, attackCost);
+        vm.startPrank(attacker);
+        usdc.approve(address(sloped), attackCost);
+        sloped.buy(1_000);
+        vm.stopPrank();
+
+        // victim's cost for the same size is now higher than their accepted max
+        assertGt(sloped.quote(100), victimMax, "price moved up");
+        usdc.mint(buyer, victimMax * 2);
+        vm.startPrank(buyer);
+        usdc.approve(address(sloped), victimMax * 2);
+        vm.expectRevert(bytes("slippage"));
+        sloped.buy(100, victimMax);
+        vm.stopPrank();
+    }
+
     // 1. Full burn release: no redemption pool forms.
     function test_FullBurn_NoRedemptionPool() public {
         _buyAll();
@@ -239,7 +327,7 @@ contract EmberCoreTest is Test {
 
         uint256 cost = guarded.quote(10);
         token.mint(buyer, cost);
-        token.setReentry(address(guarded), abi.encodeWithSelector(EmberCore.buy.selector, 1));
+        token.setReentry(address(guarded), abi.encodeWithSignature("buy(uint256)", 1));
 
         vm.startPrank(buyer);
         token.approve(address(guarded), cost);
